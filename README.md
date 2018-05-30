@@ -10,3 +10,11 @@ Building server-client network application using docker containers.
 	*	docker container ls 						<- get running instances
 	*	docker exec -it {CONTAINER ID} bash  		<- pick up specific ID and log in to bash
 4.	thats all - enjoy
+
+#USEFUL COMMANDS
+1. stop all containers:
+	*docker kill $(docker ps -q)
+2.	remove all containers
+	*docker rm $(docker ps -a -q)
+3.	remove all docker images
+	*docker rmi $(docker images -q)
