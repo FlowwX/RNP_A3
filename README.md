@@ -13,8 +13,8 @@ Building server-client network application using docker containers.
 
 #USEFUL COMMANDS
 1. stop all containers:
-	*docker kill $(docker ps -q)
+	*	docker kill $(docker ps -q)
 2.	remove all containers
-	*docker rm $(docker ps -a -q)
+	*	docker rm $(docker ps -a -q)
 3.	remove all docker images
-	*docker rmi $(docker images -q)
+	*	docker rmi $(docker images -q)
