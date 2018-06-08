@@ -12,10 +12,142 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/time.h> //FD_SET, FD_ISSET, FD_ZERO macros
+#include <stdbool.h>    
+#include <time.h>
+#include <sys/stat.h>
+
   
 #define TRUE   1
 #define FALSE  0
 #define PORT 8888
+#define CHUNK 1024 /* read 1024 bytes at a time */
+
+
+bool writeDataToClient(int sckt, const void *data, int datalen)
+{
+    const char *pdata = (const char*) data;
+
+    while (datalen > 0){
+        int numSent = send(sckt, pdata, datalen, 0);
+        if (numSent <= 0){
+            if (numSent == 0){
+                printf("The client was not written to: disconnected\n");
+            } else {
+                perror("The client was not written to");
+            }
+            return false;
+        }
+        pdata += numSent;
+        datalen -= numSent;
+    }
+
+    return true;
+}
+
+bool writeStrToClient(int sckt, const char *str)
+{
+    return writeDataToClient(sckt, str, strlen(str));
+}
+
+
+
+void sendPassedFile(char *filename,  int sd){
+
+    char buf[CHUNK] = {'\0'};
+    FILE *file;
+    size_t nread;
+
+
+
+
+
+
+    file = fopen(filename, "r");
+
+    printf("after open(%s)\n", filename);
+            //get file size
+    fseek(file, 0L, SEEK_END);
+    int fsize = ftell(file);
+    rewind(file);
+
+     printf("after size determining\n");
+
+ 
+    char cfs[16];
+    sprintf(cfs, "%d\n", fsize);
+    char last_modified[100] = "";
+    struct stat b;
+    if (!stat(file, &b)) {
+        strftime(last_modified, 100, "%d/%m/%Y %H:%M:%S\n", localtime( &b.st_ctime));
+        printf("\nLast modified date and time = %s\n", last_modified);
+    }
+    else{
+        strcpy(last_modified, "not available");
+    }
+
+
+    //build header
+    writeStrToClient(sd, cfs);
+    writeStrToClient(sd, "last_modify:");
+    writeStrToClient(sd, last_modified);
+    writeStrToClient(sd, "\n");
+    writeStrToClient(sd, "======\n");
+    
+
+    printf("after header\n");
+
+    if (file != NULL ) {
+        while ((nread = fread(buf, 1, sizeof buf, file)) > 0){
+
+            send(sd, buf, nread, 0);
+            printf("%d\n", nread);
+
+        }
+
+        if (ferror(file)) {
+            printf("ERROR in reading file: %s\n", filename);
+        }
+        fclose(file);
+    }
+    else{
+        printf("Couldn't open file: %s\n", filename);
+    }
+}
+
+
+void splitString(const void *stri, const void *delimiter, char results[][10240] ){
+    char *ptr;
+
+    
+
+
+
+    // initialisieren und ersten Abschnitt erstellen
+    ptr = strtok(stri, delimiter);
+    
+    int idx = 0;
+
+    while(ptr != NULL) {
+
+        if(idx<=5){
+            strcpy( results[idx], ptr);
+            printf("->>>%s\n", results[idx]);
+            memset(ptr,0,strlen(ptr)); // reset string
+        }
+    
+
+
+
+        // naechsten Abschnitt erstellen
+        ptr = strtok(NULL, delimiter);
+
+        idx++;
+    }
+}
+
+
+
+
  
 int main(int argc , char *argv[])
 {
@@ -23,6 +155,10 @@ int main(int argc , char *argv[])
     int master_socket , addrlen , new_socket , client_socket[30] , max_clients = 30 , activity, i , valread , sd;
     int max_sd;
     struct sockaddr_in address;
+
+    bool mode_put = false;
+    FILE *opened_file;
+    int fsize;
       
     char buffer[1025];  //data buffer of 1K
       
@@ -149,8 +285,12 @@ int main(int argc , char *argv[])
               
             if (FD_ISSET( sd , &readfds)) 
             {
+
+                strcpy(buffer, ""); //clear buffer
+                     
+
                 //Check if it was for closing , and also read the incoming message
-                if ((valread = read( sd , buffer, 1024)) == 0)
+                if ((valread = recv( sd , buffer, CHUNK, 0)) == 0) //len = recv(sd, buf, CHUNK, 0)) > 0) )
                 {
                     //Somebody disconnected , get his details and print
                     getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
@@ -161,12 +301,96 @@ int main(int argc , char *argv[])
                     client_socket[i] = 0;
                 }
                   
-                //Echo back the message that came in
+                //process client requests
                 else
                 {
-                    //set the string terminating NULL byte on the end of the data read
-                    buffer[valread] = '\0';
-                    send(sd , buffer , strlen(buffer) , 0 );
+ 
+                    char res[10][10240];
+                    char resu[10][10240];
+                    memset(res,0,sizeof(res));
+                 
+                    
+                    //do all operations here
+                    if( strncmp(buffer, "GET", strlen("GET") ) == 0 ){
+
+                       
+
+                        printf("in GET(old:%s):\n", res[1]);
+
+                        splitString(buffer, " ", res);
+                        printf("after split:\n");
+
+                        writeStrToClient( sd, "200 OK\n" );
+
+                        printf("after write:\n");
+
+                        sendPassedFile(res[1], sd);
+
+                        printf("after send:\n");
+
+                    }
+                    else if( strncmp(buffer, "PUT", strlen("PUT") ) == 0 ){
+                        buffer[valread] = '\0';
+                        mode_put = true;
+
+                        char buf2[10240] = "";
+                        strcpy(buf2, buffer);
+
+                        splitString(buffer, " ", res);
+
+                        opened_file = fopen(res[1], "w");
+                        fsize = atoi(res[2]);
+
+                        splitString(buf2, "======", resu);
+
+                        
+                        strcpy( buffer, resu[1] );
+
+                        if(strlen(buffer) == 0){
+                            valread = 0;
+                        }
+
+                    }
+                    else if( strncmp(buffer, "LIST", strlen("LIST") ) == 0 ){
+
+                            printf("in LIST:");
+                        for(int j=0; j<=max_clients; j++ ){
+                            if(client_socket[j] != 0){
+                                char clients[16];
+                                struct sockaddr_in cli;
+                                int cli_len;
+                                getpeername(client_socket[j] , (struct sockaddr*)&cli , (socklen_t*)&cli_len);
+
+                                printf("Client(sd:%d): ip %s , port %d \n", client_socket[j], inet_ntoa(cli.sin_addr) , ntohs(cli.sin_port));
+                                
+                                sprintf(clients, "%d\n", client_socket[j]);
+
+                                printf("sd:%s\n", clients);
+                                writeStrToClient(sd, clients);
+                            }
+                        }
+                    }
+
+
+                    //handle mods
+                    if( mode_put && (fsize > 0) ) {
+
+                        if(fsize<=valread){
+                            valread = fsize;
+                        }
+
+                        fsize-=valread;
+                        fwrite(buffer, sizeof(char), valread, opened_file);
+
+                        if(fsize <= 0){
+                            fclose(opened_file);
+                            mode_put = false;
+
+                            writeStrToClient( sd, "HTTP/1.1 200 OK\r\n" );
+                        }
+                    }
+
+                    
                 }
             }
         }
