@@ -142,14 +142,25 @@ int main(int argc , char *argv[])
 
         if(strncmp(cmd, "PUT", strlen("PUT") ) == 0 ){
             printf("in PUT:\r\n\r\n");
-            receive = 1;
+	    
+           // receive = 1;
 
-            char command[100] = "PUT ";
-            char *filename = p1;
+	  
+
+           	 char command[100] = "PUT ";
+
+		printf("%s", command );
+          char *filename = p1;
             int fsize;
-            FILE* file = fopen(filename, "r");
+
+            printf("%s", filename );
 
 
+             FILE* file = fopen(filename, "r");
+
+
+
+	
             //get file size
             fseek(file, 0L, SEEK_END);
             fsize = ftell(file);
@@ -158,10 +169,10 @@ int main(int argc , char *argv[])
             sprintf(cfs, "%d", fsize);
      
 
-                  printf("%s-%d-%s\n",filename, fsize);
+ 	  // printf("%s-%d-%s\n",filename, fsize);
 
 
-            strcat(command, filename);
+           strcat(command, filename);
             strcat(command, " ");
             strcat(command, cfs );
             strcat(command, "======" ); //seperate header from payload
@@ -257,3 +268,6 @@ int main(int argc , char *argv[])
     return 0;
 
 }
+
+
+

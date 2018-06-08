@@ -354,16 +354,17 @@ int main(int argc , char *argv[])
                     else if( strncmp(buffer, "LIST", strlen("LIST") ) == 0 ){
 
                             printf("in LIST:");
-                        for(int j=0; j<=max_clients; j++ ){
+			int j;
+                        for(j=0; j<=max_clients; j++ ){
                             if(client_socket[j] != 0){
                                 char clients[16];
                                 struct sockaddr_in cli;
                                 int cli_len;
                                 getpeername(client_socket[j] , (struct sockaddr*)&cli , (socklen_t*)&cli_len);
 
-                                printf("Client(sd:%d): ip %s , port %d \n", client_socket[j], inet_ntoa(cli.sin_addr) , ntohs(cli.sin_port));
+                                sprintf( clients, "Client(sd:%d): ip %s , port %d \n", client_socket[j], inet_ntoa(cli.sin_addr) , ntohs(cli.sin_port));
                                 
-                                sprintf(clients, "%d\n", client_socket[j]);
+                                //sprintf(clients, "%d\n", client_socket[j]);
 
                                 printf("sd:%s\n", clients);
                                 writeStrToClient(sd, clients);
