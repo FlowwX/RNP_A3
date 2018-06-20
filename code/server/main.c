@@ -15,6 +15,8 @@
 #include <stdbool.h>    
 #include <time.h>
 #include <sys/stat.h>
+#include <netdb.h>
+
 
   
 #define TRUE   1
@@ -159,6 +161,10 @@ int main(int argc , char *argv[])
     bool mode_put = false;
     FILE *opened_file;
     int fsize;
+
+    struct addrinfo hints, *res;
+    memset( &hints, 0, sizeof(hints) );
+
       
     char buffer[1025];  //data buffer of 1K
       
@@ -166,7 +172,7 @@ int main(int argc , char *argv[])
     fd_set readfds;
       
     //a message
-    char *message = "ECHO Daemon v1.0 \r\n";
+    char *message = "RNP Server v1.0 \r\n";
   
     //initialise all client_socket[] to 0 so not checked
     for (i = 0; i < max_clients; i++) 
@@ -175,26 +181,46 @@ int main(int argc , char *argv[])
     }
       
     //create a master socket
-    if( (master_socket = socket(AF_INET , SOCK_STREAM , 0)) == 0) 
+    /*if( (master_socket = socket(AF_INET , SOCK_STREAM , 0)) == 0) 
     {
         perror("socket failed");
         exit(EXIT_FAILURE);
-    }
-  
+    }*/
+ 
+
+ 
+         hints.ai_family = AF_INET6;
+        hints.ai_socktype = SOCK_STREAM;
+        //hints.ai_protocol = IPPROTO_TCP;
+        hints.ai_flags = AI_PASSIVE;
+
+
+
+        getaddrinfo(NULL, "8888", &hints, &res);
+
+       master_socket = socket( res->ai_family, res->ai_socktype, res->ai_protocol );
+
+
     //set master socket to allow multiple connections , this is just a good habit, it will work without this
     if( setsockopt(master_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0 )
     {
         perror("setsockopt");
         exit(EXIT_FAILURE);
     }
-  
+
+
+
+ 
     //type of socket created
-    address.sin_family = AF_INET;
+    address.sin_family = AF_INET6;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons( PORT );
-      
+ 
+
+printf("test");
+     
     //bind the socket to localhost port 8888
-    if (bind(master_socket, (struct sockaddr *)&address, sizeof(address))<0) 
+    if (bind(master_socket, res->ai_addr, res->ai_addrlen )  <  0 ) 
     {
         perror("bind failed");
         exit(EXIT_FAILURE);
@@ -387,7 +413,7 @@ int main(int argc , char *argv[])
                             fclose(opened_file);
                             mode_put = false;
 
-                            writeStrToClient( sd, "HTTP/1.1 200 OK\r\n" );
+                            writeStrToClient( sd, "200 OK\r\n" );
                         }
                     }
 
