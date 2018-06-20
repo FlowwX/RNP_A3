@@ -252,7 +252,7 @@ int main(int argc , char *argv[])
         else if(strncmp(cmd, "LIST", strlen("LIST") ) == 0 ){
             char command[100] = "LIST";
             writeStrToServer(sock, command);
-
+	    memset(server_reply, 0, 2000);
             recv(sock , server_reply , CHUNK , 0); 
             printf("%s",server_reply);
         }
