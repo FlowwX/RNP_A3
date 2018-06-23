@@ -16,6 +16,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <netdb.h>
+#include <dirent.h> 
 
 
   
@@ -23,6 +24,9 @@
 #define FALSE  0
 #define PORT 8888
 #define CHUNK 1024 /* read 1024 bytes at a time */
+
+
+
 
 
 bool writeDataToClient(int sckt, const void *data, int datalen)
@@ -154,16 +158,20 @@ void splitString(const void *stri, const void *delimiter, char results[][10240] 
 int main(int argc , char *argv[])
 {
     int opt = TRUE;
-    int master_socket , addrlen , new_socket , client_socket[30] , max_clients = 30 , activity, i , valread , sd;
+    int32_t master_socket , addrlen , new_socket , client_socket[30] , max_clients = 30 , activity, i , valread , sd;
     int max_sd;
-    struct sockaddr_in address;
+    struct sockaddr_storage their_addr;
+    socklen_t sin_size;
+    int amount_of_clients = 0;
 
     bool mode_put = false;
     FILE *opened_file;
-    int fsize;
 
-    struct addrinfo hints, *res;
-    memset( &hints, 0, sizeof(hints) );
+    int fsize, fsize_header;
+    int yes=1;
+    int rv;
+    struct addrinfo hints, *res, *p;
+
 
       
     char buffer[1025];  //data buffer of 1K
@@ -172,59 +180,104 @@ int main(int argc , char *argv[])
     fd_set readfds;
       
     //a message
-    char *message = "RNP Server v1.0 \r\n";
+    char *message = "RNP Server v1.0 \r\n\r\ncommands: \r\n\t - LIST \r\n\t - PUT <filename> \r\n\t - GET <filename>\r\n\t - QUIT \r\n!Important: This program reads everytime two strings as input, so you have\r\nenter always 2 strings and continue with enter-button.\r\n\r\n";
   
     //initialise all client_socket[] to 0 so not checked
     for (i = 0; i < max_clients; i++) 
     {
         client_socket[i] = 0;
     }
-      
-    //create a master socket
-    /*if( (master_socket = socket(AF_INET , SOCK_STREAM , 0)) == 0) 
-    {
-        perror("socket failed");
-        exit(EXIT_FAILURE);
-    }*/
- 
 
  
-         hints.ai_family = AF_INET6;
-        hints.ai_socktype = SOCK_STREAM;
-        //hints.ai_protocol = IPPROTO_TCP;
-        hints.ai_flags = AI_PASSIVE;
+
+
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE; // use my IP
 
 
 
-        getaddrinfo(NULL, "8888", &hints, &res);
 
-       master_socket = socket( res->ai_family, res->ai_socktype, res->ai_protocol );
-
-
-    //set master socket to allow multiple connections , this is just a good habit, it will work without this
-    if( setsockopt(master_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0 )
-    {
-        perror("setsockopt");
-        exit(EXIT_FAILURE);
+    if ((rv = getaddrinfo(NULL, "8888", &hints, &res)) != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        return 1;
     }
 
 
+    // loop through all the results and bind to the first we can
+    for(p = res; p != NULL; p = p->ai_next) {
+        if ((master_socket = socket(p->ai_family, p->ai_socktype,
+                p->ai_protocol)) == -1) {
+            perror("server: socket");
+            continue;
+        }
+
+        if (setsockopt(master_socket, SOL_SOCKET, SO_REUSEADDR, &yes,
+                sizeof(int)) == -1) {
+            perror("setsockopt");
+            exit(1);
+        }
+
+        if (bind(master_socket, p->ai_addr, p->ai_addrlen) == -1) {
+            close(master_socket);
+            perror("server: bind");
+            continue;
+        }
+
+        break;
+    }
+
+
+ void getPortAndIP(int sd, char* outstr){
+
+    socklen_t len;
+    struct sockaddr_storage addr;
+    char ipstr[INET6_ADDRSTRLEN];
+    int port;
+
+    int s = sd;
+    len = sizeof addr;
+    getpeername(s, (struct sockaddr*)&addr, &len);
+
+    // deal with both IPv4 and IPv6:
+    if (addr.ss_family == AF_INET) {
+        struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+        port = ntohs(s->sin_port);
+        inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
+    } else { // AF_INET6
+        struct sockaddr_in6 *s = (struct sockaddr_in6 *)&addr;
+        port = ntohs(s->sin6_port);
+        inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
+    }
+
+    sprintf(outstr, "ip:%s on port:%d", ipstr, port);
+ }
+
+
+void readServerDir(char* output){
+    DIR *d;
+    struct dirent *dir;
+    d = opendir(".");
+    if (d) {
+        while ((dir = readdir(d)) != NULL) {
+            char fib[300] = "";
+            sprintf(fib, "\t- %s\n", dir->d_name);
+            strcat(output, fib);
+        }
+        closedir(d);
+    }
+}
+
+
 
  
-    //type of socket created
-    address.sin_family = AF_INET6;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons( PORT );
+
  
 
-printf("test");
+
      
-    //bind the socket to localhost port 8888
-    if (bind(master_socket, res->ai_addr, res->ai_addrlen )  <  0 ) 
-    {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
-    }
+
     printf("Listener on port %d \n", PORT);
      
     //try to specify maximum of 3 pending connections for the master socket
@@ -234,8 +287,7 @@ printf("test");
         exit(EXIT_FAILURE);
     }
       
-    //accept the incoming connection
-    addrlen = sizeof(address);
+
     puts("Waiting for connections ...");
      
     while(TRUE) 
@@ -273,14 +325,18 @@ printf("test");
         //If something happened on the master socket , then its an incoming connection
         if (FD_ISSET(master_socket, &readfds)) 
         {
-            if ((new_socket = accept(master_socket, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
-            {
+
+            sin_size = sizeof their_addr;
+            new_socket = accept(master_socket, (struct sockaddr *)&their_addr, &sin_size);
+            if (new_socket == -1) {
                 perror("accept");
-                exit(EXIT_FAILURE);
+                continue;
             }
-          
+
+            char outp[100] = "";
+            getPortAndIP(new_socket,outp);
             //inform user of socket number - used in send and receive commands
-            printf("New connection , socket fd is %d , ip is : %s , port : %d \n" , new_socket , inet_ntoa(address.sin_addr) , ntohs(address.sin_port));
+            printf("client with %s connects\n" , outp );
         
             //send new connection greeting message
             if( send(new_socket, message, strlen(message), 0) != strlen(message) ) 
@@ -298,33 +354,42 @@ printf("test");
                 {
                     client_socket[i] = new_socket;
                     printf("Adding to list of sockets as %d\n" , i);
-                     
+                    amount_of_clients++;
                     break;
+
                 }
             }
+
+
         }
           
         //else its some IO operation on some other socket :)
         for (i = 0; i < max_clients; i++) 
         {
+
             sd = client_socket[i];
-              
+
+             //if(amount_of_clients>1)  {while(1); }
             if (FD_ISSET( sd , &readfds)) 
             {
+            
 
-                strcpy(buffer, ""); //clear buffer
+                memset(buffer,0, CHUNK); //clear buffer
                      
 
                 //Check if it was for closing , and also read the incoming message
                 if ((valread = recv( sd , buffer, CHUNK, 0)) == 0) //len = recv(sd, buf, CHUNK, 0)) > 0) )
                 {
-                    //Somebody disconnected , get his details and print
-                    getpeername(sd , (struct sockaddr*)&address , (socklen_t*)&addrlen);
-                    printf("Host disconnected , ip %s , port %d \n" , inet_ntoa(address.sin_addr) , ntohs(address.sin_port));
+                  
+
+                    char outp[100] = "";
+                    getPortAndIP(sd,outp);
+                    printf("Cient(ID:%d) with %s disconnects\n",i, outp);
                       
                     //Close the socket and mark as 0 in list for reuse
                     close( sd );
                     client_socket[i] = 0;
+                   
                 }
                   
                 //process client requests
@@ -341,18 +406,18 @@ printf("test");
 
                        
 
-                        printf("in GET(old:%s):\n", res[1]);
+        
 
                         splitString(buffer, " ", res);
-                        printf("after split:\n");
+        
 
                         writeStrToClient( sd, "200 OK\n" );
 
-                        printf("after write:\n");
+      
 
                         sendPassedFile(res[1], sd);
 
-                        printf("after send:\n");
+      
 
                     }
                     else if( strncmp(buffer, "PUT", strlen("PUT") ) == 0 ){
@@ -366,6 +431,7 @@ printf("test");
 
                         opened_file = fopen(res[1], "w");
                         fsize = atoi(res[2]);
+                        fsize_header = fsize;
 
                         splitString(buf2, "======", resu);
 
@@ -379,23 +445,43 @@ printf("test");
                     }
                     else if( strncmp(buffer, "LIST", strlen("LIST") ) == 0 ){
 
-                            printf("in LIST:");
-			int j;
+                        char repsonse[4*1024];
+                        char payload[3*1024];
+                        memset(repsonse,0,sizeof repsonse);
+                        memset(payload,0,sizeof payload);
+  
+
+      
+
+                        strcat(payload, "\t###CONNECTED CLIENTS:\n");
+                        int j;
                         for(j=0; j<=max_clients; j++ ){
                             if(client_socket[j] != 0){
-                                char clients[16];
-                                struct sockaddr_in cli;
-                                int cli_len;
-                                getpeername(client_socket[j] , (struct sockaddr*)&cli , (socklen_t*)&cli_len);
-
-                                sprintf( clients, "Client(sd:%d): ip %s , port %d \n", client_socket[j], inet_ntoa(cli.sin_addr) , ntohs(cli.sin_port));
                                 
-                                //sprintf(clients, "%d\n", client_socket[j]);
+                                char buf[100] = "";
+                                char out[100] = "";
+                                getPortAndIP(client_socket[j],buf);
+                                sprintf(out,"\t- Client with ID:%d, %s\n", j, buf);
 
-                                printf("sd:%s\n", clients);
-                                writeStrToClient(sd, clients);
+                                strcat(payload, out);
                             }
                         }
+
+                        char files[100] = "";
+                        readServerDir(files);
+
+                        strcat(payload, "\n\t###CONTENT OF SERVER FOLDER:\n");
+                        strcat(payload, files);
+
+                        char len[10] = "";
+                        sprintf(len,"%d\n",strlen(payload));
+                        strcat(repsonse, "OK\n");
+                        strcat(repsonse, len);
+                        strcat(repsonse, "======\n");
+                        strcat(repsonse,payload);
+
+                        writeDataToClient(sd, repsonse, sizeof repsonse);
+
                     }
 
 
@@ -413,7 +499,21 @@ printf("test");
                             fclose(opened_file);
                             mode_put = false;
 
-                            writeStrToClient( sd, "200 OK\r\n" );
+                            char ip[32] = "";
+                            char ip_ret[64] = "";
+                            char size_ret[16] = "";
+                            char resp[1024] = "";
+
+                            getPortAndIP(master_socket, ip);
+                            sprintf(ip_ret, "send from %s\n", ip);
+                            sprintf(size_ret, "size:%d bytes\n", fsize_header);
+
+                            strcat(resp, "\n\nOK\n");
+                            strcat(resp, ip_ret);
+                            strcat(resp, size_ret);
+                            strcat(resp, "======\n");
+
+                            writeDataToClient( sd, resp, sizeof resp );
                         }
                     }
 

@@ -143,26 +143,13 @@ int main(int argc , char *argv[])
 
 
         if(strncmp(cmd, "PUT", strlen("PUT") ) == 0 ){
-            printf("in PUT:\r\n\r\n");
-	    
-           // receive = 1;
 
-	  
-
-           	 char command[100] = "PUT ";
-
-		printf("%s", command );
-          char *filename = p1;
+            char command[100] = "PUT ";
+            char *filename = p1;
             int fsize;
 
-            printf("%s", filename );
+            FILE* file = fopen(filename, "r");
 
-
-             FILE* file = fopen(filename, "r");
-
-
-
-	
             //get file size
             fseek(file, 0L, SEEK_END);
             fsize = ftell(file);
@@ -171,16 +158,24 @@ int main(int argc , char *argv[])
             sprintf(cfs, "%d", fsize);
      
 
- 	  // printf("%s-%d-%s\n",filename, fsize);
-
-
-           strcat(command, filename);
+            strcat(command, filename);
             strcat(command, " ");
             strcat(command, cfs );
             strcat(command, "======" ); //seperate header from payload
             writeStrToServer(sock, command);
             sendPassedFile(filename, sock, file );
-            printf("ready with sending file");
+            printf(">>>ready sending file!\n");
+
+            int l=0;
+            while(1){
+                char rep[CHUNK];
+                l += recv(sock , rep , CHUNK , 0);
+                printf("%s",rep);
+
+                if(l>=(CHUNK)){
+                    break;
+                }
+            }
         }
         else if(strncmp(cmd, "GET", strlen("GET") ) == 0 ){
             char command[100] = "GET ";
@@ -254,9 +249,17 @@ int main(int argc , char *argv[])
         else if(strncmp(cmd, "LIST", strlen("LIST") ) == 0 ){
             char command[100] = "LIST";
             writeStrToServer(sock, command);
-	    memset(server_reply, 0, 2000);
-            recv(sock , server_reply , CHUNK , 0); 
-            printf("%s",server_reply);
+	        
+            int l=0;
+            while(1){
+                char rep[CHUNK];
+                l += recv(sock , rep , CHUNK , 0);
+                printf("%s",rep);
+
+                if(l>=(4*CHUNK)){
+                    break;
+                }
+            }
         }
         else{
             printf("No supported command! Please try again.");
